@@ -1,3 +1,8 @@
+import csv
+from io import BytesIO
+from django.http import HttpResponse
+from reportlab.pdfgen import canvas
+from openpyxl import Workbook
 from rest_framework import generics, viewsets
 from rest_framework.permissions import AllowAny
 from rest_framework.views import APIView
@@ -85,3 +90,46 @@ class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = NotificationSerializer
     def get_queryset(self):
         return self.request.user.notifications.all()
+class ExportPDFView(APIView):
+    def get(self, request):
+        response = HttpResponse(content_type='application/pdf')
+        response['Content-Disposition'] = 'attachment; filename="expenses_report.pdf"'
+        
+        p = canvas.Canvas(response)
+        p.drawString(200, 800, "BudgetBuddy Expense Report")
+        y = 750
+        p.drawString(50, y, "Date")
+        p.drawString(150, y, "Category")
+        p.drawString(300, y, "Amount")
+        p.drawString(400, y, "Description")
+        y -= 20
+        
+        for exp in request.user.expenses.all():
+            p.drawString(50, y, str(exp.date))
+            p.drawString(150, y, exp.category.capitalize())
+            p.drawString(300, y, f"${exp.amount}")
+            p.drawString(400, y, exp.description[:20])
+            y -= 20
+            if y < 50:
+                p.showPage()
+                y = 800
+                
+        p.showPage()
+        p.save()
+        return response
+
+class ExportExcelView(APIView):
+    def get(self, request):
+        response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        response['Content-Disposition'] = 'attachment; filename="expenses_report.xlsx"'
+        
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Expenses"
+        ws.append(['Date', 'Category', 'Amount', 'Description'])
+        
+        for exp in request.user.expenses.all():
+            ws.append([str(exp.date), exp.category, float(exp.amount), exp.description])
+            
+        wb.save(response)
+        return response
