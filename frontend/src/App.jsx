@@ -89,7 +89,7 @@ export default function App() {
   }
 
   const addFundsToGoal = async (goal) => {
-    const amountToAdd = window.prompt(`How much would you like to add to "${goal.name}"?`)
+    const amountToAdd = window.prompt(`How much would you like to lock into "${goal.name}"?`)
     if (amountToAdd) {
       const newSaved = parseFloat(goal.saved_amount) + parseFloat(amountToAdd)
       await axios.patch(`${API}/goals/${goal.id}/`, { saved_amount: newSaved }, authHeaders)
@@ -140,6 +140,7 @@ export default function App() {
     </div>
   )
 
+  // --- CALCULATIONS ---
   const pieData = expenses.reduce((acc, exp) => {
     const existing = acc.find(item => item.name === exp.category)
     if (existing) existing.value += Number(exp.amount)
@@ -148,6 +149,10 @@ export default function App() {
   }, []);
 
   const barData = [ { name: 'Income', amount: stats.income }, { name: 'Expenses', amount: stats.expense }, { name: 'Savings', amount: stats.savings } ]
+
+  // Vault Logic: Calculate locked funds and available balance
+  const totalGoalsSaved = goals.reduce((acc, goal) => acc + Number(goal.saved_amount), 0);
+  const availableBalance = stats.savings - totalGoalsSaved;
 
   // --- MAIN LAYOUT ---
   return (
@@ -174,7 +179,7 @@ export default function App() {
       </div>
 
       <div className="flex-1 flex flex-col overflow-hidden">
-        {/* TOPBAR WITH NOTIFICATIONS */}
+        {/* TOPBAR */}
         <header className="h-20 bg-slate-900/50 border-b border-slate-800 flex items-center justify-between px-8 backdrop-blur-md">
           <h2 className="text-2xl font-bold text-white capitalize">{activeTab}</h2>
           <div className="flex items-center gap-6">
@@ -209,9 +214,19 @@ export default function App() {
           {activeTab === 'dashboard' && (
              <div className="space-y-8">
              <div className="grid grid-cols-3 gap-6">
-               <div className="bg-gradient-to-br from-slate-800 to-slate-900 p-6 rounded-2xl border border-slate-700 shadow-xl"><p className="text-slate-400 font-semibold mb-1">Total Income</p><h3 className="text-3xl font-bold text-emerald-400">${stats.income.toFixed(2)}</h3></div>
-               <div className="bg-gradient-to-br from-slate-800 to-slate-900 p-6 rounded-2xl border border-slate-700 shadow-xl"><p className="text-slate-400 font-semibold mb-1">Total Expenses</p><h3 className="text-3xl font-bold text-red-400">${stats.expense.toFixed(2)}</h3></div>
-               <div className="bg-gradient-to-br from-indigo-900/40 to-slate-900 p-6 rounded-2xl border border-indigo-500/30 shadow-xl shadow-indigo-900/20"><p className="text-indigo-300 font-semibold mb-1">Net Savings</p><h3 className="text-3xl font-bold text-indigo-400">${stats.savings.toFixed(2)}</h3></div>
+               <div className="bg-gradient-to-br from-slate-800 to-slate-900 p-6 rounded-2xl border border-slate-700 shadow-xl">
+                 <p className="text-slate-400 font-semibold mb-1">Total Income</p>
+                 <h3 className="text-3xl font-bold text-emerald-400">${stats.income.toFixed(2)}</h3>
+               </div>
+               <div className="bg-gradient-to-br from-slate-800 to-slate-900 p-6 rounded-2xl border border-slate-700 shadow-xl">
+                 <p className="text-slate-400 font-semibold mb-1">Total Expenses</p>
+                 <h3 className="text-3xl font-bold text-red-400">${stats.expense.toFixed(2)}</h3>
+               </div>
+               <div className="bg-gradient-to-br from-indigo-900/40 to-slate-900 p-6 rounded-2xl border border-indigo-500/30 shadow-xl shadow-indigo-900/20">
+                 <p className="text-indigo-300 font-semibold mb-1">Available Balance</p>
+                 <h3 className="text-3xl font-bold text-indigo-400">${availableBalance.toFixed(2)}</h3>
+                 <p className="text-xs text-amber-400 mt-1">🔒 ${totalGoalsSaved.toFixed(2)} locked in Goals</p>
+               </div>
              </div>
              <div className="grid grid-cols-2 gap-6">
                <div className="bg-slate-900/80 p-6 rounded-2xl border border-slate-800 shadow-xl"><h3 className="text-lg font-bold text-white mb-4">Income vs Expenses</h3><div className="h-64"><ResponsiveContainer width="100%" height="100%"><BarChart data={barData}><CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} /><XAxis dataKey="name" stroke="#94a3b8" /><YAxis stroke="#94a3b8" /><Tooltip cursor={{fill: '#1e293b'}} contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #334155' }}/><Bar dataKey="amount" fill="#8b5cf6" radius={[4, 4, 0, 0]} barSize={50}>{barData.map((entry, index) => (<Cell key={index} fill={entry.name === 'Income' ? '#10b981' : entry.name === 'Expenses' ? '#ef4444' : '#8b5cf6'} />))}</Bar></BarChart></ResponsiveContainer></div></div>
@@ -293,7 +308,7 @@ export default function App() {
               </div>
               <div className="col-span-2 space-y-4">
                 {goals.map(goal => {
-                  const progress = (goal.saved_amount / goal.target_amount) * 100 || 0;
+                  const progress = (Number(goal.saved_amount) / Number(goal.target_amount)) * 100 || 0;
                   return (
                     <div key={goal.id} className="bg-slate-900/80 p-6 rounded-2xl border border-slate-800 shadow-xl">
                       <div className="flex justify-between items-end mb-2">
@@ -317,9 +332,10 @@ export default function App() {
             </div>
           )}
 
-          {/* BUDGETS TAB */}
+          {/* BUDGETS TAB (WITH UTILIZATION LOGIC) */}
           {activeTab === 'budgets' && (
              <div className="grid grid-cols-3 gap-8">
+               {/* LEFT: SET BUDGET FORM */}
                <div className="col-span-1 bg-slate-900/80 p-6 rounded-2xl border border-slate-800 shadow-xl h-fit">
                  <h3 className="text-lg font-bold text-white mb-6">Set Monthly Budget</h3>
                  <form onSubmit={handleAddBudget} className="flex flex-col gap-4">
@@ -328,13 +344,58 @@ export default function App() {
                    <button type="submit" className="mt-2 bg-purple-600 hover:bg-purple-500 p-3 rounded-xl font-bold shadow-lg shadow-purple-500/30 transition-all">Set Budget</button>
                  </form>
                </div>
+
+               {/* RIGHT: BUDGET UTILIZATION TRACKING */}
                <div className="col-span-2 space-y-4">
-                 {budgets.map(b => (
-                    <div key={b.id} className="bg-slate-900/80 p-6 rounded-2xl border border-slate-800 shadow-xl flex justify-between items-center">
-                      <div><h4 className="text-lg font-bold text-white mb-1">Budget for {b.month}</h4><p className="text-slate-400 text-sm">Allocated Limit</p></div>
-                      <p className="text-2xl font-bold text-purple-400">${b.total_amount}</p>
+                 {budgets.length === 0 && <p className="text-slate-500">No budgets set yet. Create one to start tracking!</p>}
+                 
+                 {budgets.map(b => {
+                   // Calculate how much was spent vs the budget limit
+                   const spent = stats.expense; 
+                   const limit = Number(b.total_amount);
+                   const remaining = limit - spent;
+                   const percentage = (spent / limit) * 100;
+                   
+                   // Determine color based on how close to the limit you are
+                   let progressColor = "bg-gradient-to-r from-purple-500 to-purple-300"; // Safe
+                   if (percentage > 80) progressColor = "bg-gradient-to-r from-amber-500 to-amber-300"; // Warning
+                   if (percentage > 100) progressColor = "bg-gradient-to-r from-red-600 to-red-400"; // Danger
+
+                   return (
+                    <div key={b.id} className="bg-slate-900/80 p-6 rounded-2xl border border-slate-800 shadow-xl">
+                      <div className="flex justify-between items-end mb-4">
+                        <div>
+                          <h4 className="text-lg font-bold text-white mb-1">Budget for {b.month}</h4>
+                          <p className="text-slate-400 text-sm">Limit: ${limit.toFixed(2)}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className={`font-bold text-2xl ${remaining < 0 ? 'text-red-400' : 'text-purple-400'}`}>
+                            ${Math.abs(remaining).toFixed(2)} {remaining < 0 ? 'Over' : 'Left'}
+                          </p>
+                          <p className="text-xs text-slate-400">Spent: ${spent.toFixed(2)}</p>
+                        </div>
+                      </div>
+                      
+                      {/* Utilization Progress Bar */}
+                      <div className="w-full bg-slate-800 rounded-full h-4 overflow-hidden relative">
+                        <div className={`h-4 rounded-full transition-all duration-1000 ${progressColor}`} style={{ width: `${Math.min(percentage, 100)}%` }}></div>
+                      </div>
+                      
+                      <div className="flex justify-between mt-2 text-xs text-slate-400">
+                        <span>0%</span>
+                        <span>{percentage > 0 ? percentage.toFixed(1) : 0}% Used</span>
+                        <span>100%</span>
+                      </div>
+                      
+                      {/* Warning Text if over budget */}
+                      {remaining < 0 && (
+                        <p className="text-red-400 text-sm mt-3 bg-red-500/10 p-2 rounded-lg border border-red-500/20 text-center font-bold">
+                          ⚠️ You have exceeded your budget by ${Math.abs(remaining).toFixed(2)}!
+                        </p>
+                      )}
                     </div>
-                 ))}
+                   )
+                 })}
                </div>
              </div>
           )}
